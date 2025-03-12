@@ -1,0 +1,7 @@
+[package]
+name = "anon_coordination"
+type = "bin"
+authors = [""]
+
+[workspace]
+members = ["crates/identity", "crates/attestation"]
