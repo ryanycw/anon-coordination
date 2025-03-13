@@ -4,6 +4,7 @@ use zkemail::{
     MAX_EMAIL_ADDRESS_LENGTH, Sequence,
 };
 
+global MAX_DOMAIN_LENGTH: u32 = 64;
 global MAX_EMAIL_HEADER_LENGTH: u32 = 512;
 
 /**
@@ -24,7 +25,7 @@ fn main(
     header: BoundedVec<u8, MAX_EMAIL_HEADER_LENGTH>,
     pubkey: RSAPubkey<KEY_LIMBS_2048>,
     signature: [Field; KEY_LIMBS_2048],
-    org_id: BoundedVec<u8, MAX_EMAIL_ADDRESS_LENGTH>,
+    domain: pub BoundedVec<u8, MAX_DOMAIN_LENGTH>,
     to_header_sequence: Sequence,
     to_address_sequence: Sequence,
     ) -> pub ([Field; 2], BoundedVec<u8, MAX_EMAIL_ADDRESS_LENGTH>) {
@@ -39,23 +40,29 @@ fn main(
     // 16k gate cost? has to be able to be brought down
     let to_address = get_email_address(header, to_header_sequence, to_address_sequence, to);
 
-    // Validate that org_id is not longer than to_address
-    assert(org_id.len() <= to_address.len(), "org_id cannot be longer than to_address");
+    // Get domain start_index from email claim - unconstrained, but we verify the domain bytes below
+    let domain_start_index = unsafe { get_domain_start_index_in_email(to_address) };
 
-    // Check if org_id is the suffix of to_address (e.g., "@organization.com")
-    let suffix_start = to_address.len() - org_id.len();
-    for i in 0..MAX_EMAIL_ADDRESS_LENGTH {
-        if i >= org_id.len() {
-            continue;
-        }
-        assert(
-            to_address.get(suffix_start + i) == org_id.get(i),
-            "domain of to_address must match org_id"
-        );
+    // Verify domain passed is present in the email claim after the @
+    assert(to_address.storage()[domain_start_index - 1] == 64, "char before domain is not '@'");
+    for i in 0..MAX_DOMAIN_LENGTH {
+        assert(to_address.storage()[domain_start_index + i] == domain.storage()[i], "invalid domain");
     }
 
     // hash the pubkey and signature for the standard outputs
     let email_nullifier = pedersen_hash(signature);
     let standard_out = [pubkey.hash(), email_nullifier];
     (standard_out, to_address)
+}
+
+unconstrained fn get_domain_start_index_in_email(email: BoundedVec<u8, MAX_EMAIL_ADDRESS_LENGTH>) -> u32 {
+    let mut domain_start_index = 0;
+    for i in 0..MAX_EMAIL_ADDRESS_LENGTH {
+        if email.storage()[i] == ("@".as_bytes())[0] {
+            domain_start_index = i + 1;
+            break;
+        }
+    }
+
+    domain_start_index
 }
