@@ -44,7 +44,10 @@ fn main(
 
     // Check if org_id is the suffix of to_address (e.g., "@organization.com")
     let suffix_start = to_address.len() - org_id.len();
-    for i in 0..org_id.len() {
+    for i in 0..MAX_EMAIL_ADDRESS_LENGTH {
+        if i >= org_id.len() {
+            continue;
+        }
         assert(
             to_address.get(suffix_start + i) == org_id.get(i),
             "domain of to_address must match org_id"
