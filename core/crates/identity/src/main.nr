@@ -24,7 +24,7 @@ fn main(
     header: BoundedVec<u8, MAX_EMAIL_HEADER_LENGTH>,
     pubkey: RSAPubkey<KEY_LIMBS_2048>,
     signature: [Field; KEY_LIMBS_2048],
-    org_id: pub Field,
+    org_id: BoundedVec<u8, MAX_EMAIL_ADDRESS_LENGTH>,
     to_header_sequence: Sequence,
     to_address_sequence: Sequence,
     ) -> pub ([Field; 2], BoundedVec<u8, MAX_EMAIL_ADDRESS_LENGTH>) {
@@ -39,9 +39,17 @@ fn main(
     // 16k gate cost? has to be able to be brought down
     let to_address = get_email_address(header, to_header_sequence, to_address_sequence, to);
 
-    // check whether the org_id is included in the to address
-    let org_id_bytes = comptime { org_id.to_bytes() };
-    assert(to_address.contains(org_id_bytes));
+    // Validate that org_id is not longer than to_address
+    assert(org_id.len() <= to_address.len(), "org_id cannot be longer than to_address");
+
+    // Check if org_id is the suffix of to_address (e.g., "@organization.com")
+    let suffix_start = to_address.len() - org_id.len();
+    for i in 0..org_id.len() {
+        assert(
+            to_address.get(suffix_start + i) == org_id.get(i),
+            "domain of to_address must match org_id"
+        );
+    }
 
     // hash the pubkey and signature for the standard outputs
     let email_nullifier = pedersen_hash(signature);
